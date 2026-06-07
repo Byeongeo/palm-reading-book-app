@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { demoBookGroups } from "@/lib/demo";
 import type { BookGroup, BookItem, PalmAnalysis, PalmLine } from "@/lib/types";
+import { verifyAccessCode } from "@/lib/access";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,9 @@ const RECENT_YEAR_CUTOFF = new Date().getFullYear() - 7;
 
 export async function POST(request: Request) {
   try {
+    const accessError = verifyAccessCode(request);
+    if (accessError) return accessError;
+
     const body = await request.json();
     const analysis = body.analysis as PalmAnalysis | undefined;
     if (!analysis) return NextResponse.json({ error: "분석 결과가 없습니다." }, { status: 400 });
