@@ -24,8 +24,29 @@ export async function POST(request: Request) {
       })
     });
 
-    return NextResponse.json({ saved: response.ok });
-  } catch {
-    return NextResponse.json({ saved: false });
+    const text = await response.text();
+    let payload: any = {};
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      payload = { raw: text };
+    }
+
+    if (!response.ok || payload.ok === false) {
+      return NextResponse.json(
+        {
+          saved: false,
+          reason: payload.error || payload.raw || "Apps Script 저장 요청이 실패했습니다."
+        },
+        { status: 502 }
+      );
+    }
+
+    return NextResponse.json({ saved: true });
+  } catch (error) {
+    return NextResponse.json(
+      { saved: false, reason: error instanceof Error ? error.message : "저장 중 문제가 생겼습니다." },
+      { status: 500 }
+    );
   }
 }
