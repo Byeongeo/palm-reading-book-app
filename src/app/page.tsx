@@ -31,6 +31,7 @@ export default function Home() {
   const [busy, setBusy] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
   const [accessCodeRequired, setAccessCodeRequired] = useState(false);
   const [accessCode, setAccessCode] = useState("");
   const [accessGranted, setAccessGranted] = useState(false);
@@ -114,6 +115,7 @@ export default function Home() {
     setAnalysisResult(null);
     setBooks([]);
     setBookGroups([]);
+    setSaveStatus("");
   }
 
   async function handleFile(file: File | undefined) {
@@ -124,6 +126,7 @@ export default function Home() {
     setAnalysisResult(null);
     setBooks([]);
     setBookGroups([]);
+    setSaveStatus("");
   }
 
   async function analyzePalm() {
@@ -140,7 +143,7 @@ export default function Home() {
       if (!response.ok) throw new Error(payload.error || "분석에 실패했습니다.");
       setProgress(100);
       setAnalysisResult(payload);
-      await saveResult(payload.analysis);
+      saveResult(payload.analysis);
     } catch (err) {
       setError(err instanceof Error ? err.message : "분석 중 문제가 생겼습니다.");
     } finally {
@@ -176,11 +179,21 @@ export default function Home() {
   }
 
   async function saveResult(analysis: PalmAnalysis) {
-    await fetch("/api/save", {
-      method: "POST",
-      headers: makeHeaders(accessCode),
-      body: JSON.stringify({ student, provider, analysis })
-    }).catch(() => undefined);
+    setSaveStatus("구글 시트에 결과를 저장하고 있습니다.");
+    try {
+      const response = await fetch("/api/save", {
+        method: "POST",
+        headers: makeHeaders(accessCode),
+        body: JSON.stringify({ student, provider, analysis })
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.saved === false) {
+        throw new Error(payload.reason || "구글 시트 저장에 실패했습니다.");
+      }
+      setSaveStatus("구글 시트 저장 완료");
+    } catch (err) {
+      setSaveStatus(err instanceof Error ? `구글 시트 저장 실패: ${err.message}` : "구글 시트 저장 실패");
+    }
   }
 
   function unlockApp() {
@@ -314,6 +327,7 @@ export default function Home() {
       </section>
 
       {error ? <div className="error no-print">{error}</div> : null}
+      {saveStatus ? <div className="save-status no-print">{saveStatus}</div> : null}
 
       <section className="output-grid" hidden={accessCodeRequired && !accessGranted}>
         <section className="panel">
