@@ -8,7 +8,7 @@ export async function analyzeWithGemini(imageDataUrl: string): Promise<PalmAnaly
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되어 있지 않습니다.");
   const { mimeType, base64 } = splitDataUrl(imageDataUrl);
-  const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.5-flash";
+  const model = normalizeGeminiModel(process.env.GEMINI_TEXT_MODEL || "gemini-3-flash-preview");
 
   const payload = await callGemini(model, apiKey, {
     contents: [
@@ -33,7 +33,7 @@ export async function generateGeminiInfographic(imageDataUrl: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY가 설정되어 있지 않습니다.");
   const { mimeType, base64 } = splitDataUrl(imageDataUrl);
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-pro-image";
+  const model = normalizeGeminiModel(process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image");
 
   const payload = await callGemini(model, apiKey, {
     contents: [
@@ -70,4 +70,26 @@ async function callGemini(model: string, apiKey: string, body: unknown) {
     throw new Error(payload.error?.message || "Gemini 요청에 실패했습니다.");
   }
   return payload;
+}
+
+function normalizeGeminiModel(model: string) {
+  const cleaned = model.trim();
+  const aliases: Record<string, string> = {
+    "Nano Banana 2": "gemini-3.1-flash-image",
+    "nano banana 2": "gemini-3.1-flash-image",
+    "nano-banana-2": "gemini-3.1-flash-image",
+    "Gemini 3.1 Flash Image": "gemini-3.1-flash-image",
+    "gemini 3.1 flash image": "gemini-3.1-flash-image",
+    "Gemini 3 Flash Preview": "gemini-3-flash-preview",
+    "gemini 3 flash preview": "gemini-3-flash-preview"
+  };
+
+  if (aliases[cleaned]) return aliases[cleaned];
+  if (aliases[cleaned.toLowerCase()]) return aliases[cleaned.toLowerCase()];
+
+  return cleaned
+    .replace(/^https:\/\/generativelanguage\.googleapis\.com\/v1beta\/models\//, "")
+    .replace(/^https:\/\/generativelanguage\.googleapis\.com\/v1\/models\//, "")
+    .replace(/^models\//, "")
+    .replace(/:generateContent$/, "");
 }
