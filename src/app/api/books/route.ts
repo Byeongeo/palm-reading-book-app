@@ -30,9 +30,13 @@ export async function POST(request: Request) {
             ...book,
             why: makeReason(group.category, group.keywords, query, book.title)
           });
-          if (groupBooks.length >= 5) break;
+          if (groupBooks.length >= 3) break;
         }
-        if (groupBooks.length >= 5) break;
+        if (groupBooks.length >= 3) break;
+      }
+
+      if (groupBooks.length < 3) {
+        await fillGroupBooks(groupBooks, group, seen);
       }
 
       if (groupBooks.length > 0) {
@@ -168,17 +172,46 @@ async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
   const payload = await response.json();
   const items = Array.isArray(payload.item) ? payload.item : [];
 
-  return items.map((item: any) => ({
-    title: item.title || "",
-    author: item.author || "",
-    publisher: item.publisher || "",
-    priceSales: typeof item.priceSales === "number" ? item.priceSales : null,
-    isbn13: item.isbn13 || item.isbn || "",
-    cover: item.cover || "",
-    link: item.link || "https://www.aladin.co.kr",
-    description: item.description || "",
-    customerReviewRank: typeof item.customerReviewRank === "number" ? item.customerReviewRank : null
-  }));
+  return items
+    .filter(isTeenOrAdultBook)
+    .map((item: any) => ({
+      title: item.title || "",
+      author: item.author || "",
+      publisher: item.publisher || "",
+      pubDate: item.pubDate || "",
+      priceSales: typeof item.priceSales === "number" ? item.priceSales : null,
+      isbn13: item.isbn13 || "",
+      isbn: item.isbn || "",
+      cover: item.cover || "",
+      link: item.link || "https://www.aladin.co.kr",
+      description: item.description || "",
+      categoryName: item.categoryName || "",
+      customerReviewRank: typeof item.customerReviewRank === "number" ? item.customerReviewRank : null
+    }));
+}
+
+function isTeenOrAdultBook(item: any) {
+  const text = `${item.title || ""} ${item.categoryName || ""}`.toLowerCase();
+  const blockedWords = ["어린이", "유아", "아동", "초등", "초등학생", "그림책", "유치원"];
+  return !blockedWords.some((word) => text.includes(word));
+}
+
+async function fillGroupBooks(groupBooks: BookItem[], group: InternalBookGroup, seen: Set<string>) {
+  const fallbackQueries = ["청소년 베스트셀러", "인문 베스트셀러", "자기계발 베스트셀러"];
+  for (const query of fallbackQueries) {
+    const found = await searchAladin(query).catch(() => []);
+    for (const book of found) {
+      const key = book.isbn13 || book.title;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      groupBooks.push({
+        ...book,
+        why: makeReason(group.category, group.keywords, query, book.title)
+      });
+      if (groupBooks.length >= 3) break;
+    }
+    if (groupBooks.length >= 3) break;
+  }
 }
 
 function makeReason(category: string, keywords: string[], query: string, title: string) {
