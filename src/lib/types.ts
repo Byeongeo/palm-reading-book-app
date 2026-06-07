@@ -32,3 +32,10 @@ export type BookItem = {
   customerReviewRank: number | null;
   why: string;
 };
+
+export type BookGroup = {
+  category: string;
+  keywords: string[];
+  theme: string;
+  books: BookItem[];
+};

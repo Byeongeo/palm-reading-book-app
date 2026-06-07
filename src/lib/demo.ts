@@ -1,4 +1,4 @@
-import type { BookItem, PalmAnalysis } from "./types";
+import type { BookGroup, BookItem, PalmAnalysis } from "./types";
 
 export const demoAnalysis: PalmAnalysis = {
   summary:
@@ -56,6 +56,21 @@ export const demoBooks: BookItem[] = [
     description: "운명선 키워드인 자기주도와 진로 개척을 바탕으로 추천하는 샘플 도서입니다.",
     customerReviewRank: null,
     why: "목표를 세우고 스스로 길을 만들어 가는 태도와 연결됩니다."
+  }
+];
+
+export const demoBookGroups: BookGroup[] = [
+  {
+    category: "감정선",
+    keywords: ["공감", "소통", "자기표현"],
+    theme: "관계와 감정을 이해하고 건강하게 표현하는 독서",
+    books: [demoBooks[0]]
+  },
+  {
+    category: "운명선",
+    keywords: ["진로탐색", "강점기반", "프로젝트"],
+    theme: "자기 길을 찾고 실행하는 진로 독서",
+    books: [demoBooks[1]]
   }
 ];
 
