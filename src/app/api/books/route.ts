@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { demoBooks } from "@/lib/demo";
-import type { BookItem, PalmAnalysis } from "@/lib/types";
+import { demoBookGroups } from "@/lib/demo";
+import type { BookGroup, BookItem, PalmAnalysis, PalmLine } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -11,29 +11,70 @@ export async function POST(request: Request) {
     if (!analysis) return NextResponse.json({ error: "분석 결과가 없습니다." }, { status: 400 });
 
     if (!process.env.ALADIN_TTB_KEY) {
-      return NextResponse.json({ books: demoBooks, demo: true });
+      return NextResponse.json({ groups: demoBookGroups, books: demoBookGroups.flatMap((group) => group.books), demo: true });
     }
 
-    const queries = makeQueries(analysis);
+    const bookGroups = makeBookGroups(analysis);
     const seen = new Set<string>();
-    const books: BookItem[] = [];
+    const groups: BookGroup[] = [];
 
-    for (const query of queries) {
-      const found = await searchAladin(query);
-      for (const book of found) {
-        const key = book.isbn13 || book.title;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        books.push({
-          ...book,
-          why: makeReason(analysis, query, book.title)
-        });
-        if (books.length >= 8) break;
+    for (const group of bookGroups) {
+      const groupBooks: BookItem[] = [];
+      for (const query of group.queries) {
+        const found = await searchAladin(query).catch(() => []);
+        for (const book of found) {
+          const key = book.isbn13 || book.title;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          groupBooks.push({
+            ...book,
+            why: makeReason(group.category, group.keywords, query, book.title)
+          });
+          if (groupBooks.length >= 5) break;
+        }
+        if (groupBooks.length >= 5) break;
       }
-      if (books.length >= 8) break;
+
+      if (groupBooks.length > 0) {
+        groups.push({
+          category: group.category,
+          keywords: group.keywords,
+          theme: group.theme,
+          books: groupBooks
+        });
+      }
     }
 
-    return NextResponse.json({ books });
+    if (groups.length === 0) {
+      for (const query of ["청소년 베스트셀러", "청소년 진로", "청소년 공감", "자기주도 학습"]) {
+        const found = await searchAladin(query).catch(() => []);
+        for (const book of found) {
+          const key = book.isbn13 || book.title;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (groups.length === 0) {
+            groups.push({
+              category: "종합 추천",
+              keywords: ["독서", "성장", "자기이해"],
+              theme: "손금 해석의 핵심어와 연결되는 청소년 성장 독서",
+              books: []
+            });
+          }
+          groups[0].books.push({
+            ...book,
+            why: makeReason("종합 추천", ["독서", "성장", "자기이해"], query, book.title)
+          });
+          if (groups[0].books.length >= 6) break;
+        }
+        if (groups[0]?.books.length >= 6) break;
+      }
+    }
+
+    if (groups.length === 0) {
+      return NextResponse.json({ groups: demoBookGroups, books: demoBookGroups.flatMap((group) => group.books), demo: true });
+    }
+
+    return NextResponse.json({ groups, books: groups.flatMap((group) => group.books) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "도서 추천 중 문제가 생겼습니다." },
@@ -42,14 +83,71 @@ export async function POST(request: Request) {
   }
 }
 
-function makeQueries(analysis: PalmAnalysis) {
+type InternalBookGroup = {
+  category: string;
+  keywords: string[];
+  theme: string;
+  queries: string[];
+};
+
+function makeBookGroups(analysis: PalmAnalysis): InternalBookGroup[] {
   const lines = Array.isArray(analysis.lines) ? analysis.lines : [];
   const recommendationQueries = Array.isArray(analysis.recommendationQueries) ? analysis.recommendationQueries : [];
-  const topics = lines.flatMap((line) => line.bookTopics || []);
-  const keywords = lines.flatMap((line) => line.keywords || []);
-  return [...recommendationQueries, ...topics, ...keywords, "청소년 베스트셀러"]
+  const groups = lines.map((line) => lineToBookGroup(line));
+  if (groups.length > 0) return groups;
+
+  return [
+    {
+      category: "종합 추천",
+      keywords: recommendationQueries.slice(0, 5),
+      theme: "손금 해석의 핵심어와 연결되는 청소년 성장 독서",
+      queries: [...recommendationQueries, "청소년 베스트셀러", "청소년 진로", "청소년 공감"]
+    }
+  ];
+}
+
+function lineToBookGroup(line: PalmLine): InternalBookGroup {
+  const keywords = Array.isArray(line.keywords) ? line.keywords : [];
+  const topics = Array.isArray(line.bookTopics) ? line.bookTopics : [];
+  const category = line.name || "추천 영역";
+  const presets = getPresetQueries(category, keywords);
+  const queries = [...topics, ...keywords, ...presets]
+    .map((query) => String(query || "").trim())
     .filter(Boolean)
+    .filter((query, index, array) => array.indexOf(query) === index)
     .slice(0, 10);
+
+  return {
+    category,
+    keywords,
+    theme: makeTheme(category, keywords),
+    queries
+  };
+}
+
+function getPresetQueries(category: string, keywords: string[]) {
+  const text = `${category} ${keywords.join(" ")}`;
+  if (text.includes("감정") || text.includes("공감") || text.includes("소통") || text.includes("표현")) {
+    return ["청소년 공감 베스트셀러", "청소년 관계 대화", "자기표현 글쓰기", "감정 수업"];
+  }
+  if (text.includes("지능") || text.includes("비판") || text.includes("정리") || text.includes("학습")) {
+    return ["비판적 사고", "공부법 베스트셀러", "자기주도 학습", "메타인지 학습"];
+  }
+  if (text.includes("생명") || text.includes("꾸준") || text.includes("관리") || text.includes("루틴")) {
+    return ["습관 베스트셀러", "청소년 마음 건강", "자기관리", "루틴"];
+  }
+  if (text.includes("운명") || text.includes("진로") || text.includes("강점") || text.includes("프로젝트")) {
+    return ["청소년 진로 베스트셀러", "강점 찾기", "프로젝트 학습", "진로탐색"];
+  }
+  return ["청소년 베스트셀러", "자기계발 청소년", "인문 베스트셀러"];
+}
+
+function makeTheme(category: string, keywords: string[]) {
+  if (category.includes("감정")) return "공감, 소통, 자기표현을 키우는 관계 독서";
+  if (category.includes("지능")) return "비판적 사고, 정리력, 학습 전략을 돕는 사고력 독서";
+  if (category.includes("생명")) return "꾸준함, 자기관리, 루틴을 세우는 생활 습관 독서";
+  if (category.includes("운명")) return "진로탐색, 강점기반, 프로젝트 실행을 돕는 진로 독서";
+  return `${keywords.join(", ")} 키워드와 연결되는 성장 독서`;
 }
 
 async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
@@ -57,7 +155,7 @@ async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
   url.searchParams.set("ttbkey", process.env.ALADIN_TTB_KEY || "");
   url.searchParams.set("Query", query);
   url.searchParams.set("QueryType", "Keyword");
-  url.searchParams.set("MaxResults", "5");
+  url.searchParams.set("MaxResults", "10");
   url.searchParams.set("start", "1");
   url.searchParams.set("SearchTarget", "Book");
   url.searchParams.set("Sort", "SalesPoint");
@@ -66,6 +164,7 @@ async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
   url.searchParams.set("Version", "20131101");
 
   const response = await fetch(url, { next: { revalidate: 3600 } });
+  if (!response.ok) throw new Error("알라딘 API 요청에 실패했습니다.");
   const payload = await response.json();
   const items = Array.isArray(payload.item) ? payload.item : [];
 
@@ -82,9 +181,7 @@ async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
   }));
 }
 
-function makeReason(analysis: PalmAnalysis, query: string, title: string) {
-  const lines = Array.isArray(analysis.lines) ? analysis.lines : [];
-  const line = lines.find((item) => [...(item.bookTopics || []), ...(item.keywords || [])].some((topic) => query.includes(topic)));
-  if (!line) return `"${query}" 주제와 연결해 ${title}을 살펴볼 수 있습니다.`;
-  return `${line.name}에서 나온 ${line.keywords.join(", ")} 키워드를 바탕으로 "${query}" 주제를 더 깊게 생각해 볼 수 있는 책입니다.`;
+function makeReason(category: string, keywords: string[], query: string, title: string) {
+  const keywordText = keywords.length > 0 ? keywords.join(", ") : query;
+  return `${category} 영역의 ${keywordText} 키워드를 바탕으로 ${title}을 살펴볼 수 있습니다.`;
 }
