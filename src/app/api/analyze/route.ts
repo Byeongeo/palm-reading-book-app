@@ -4,12 +4,16 @@ import { ensureReasonableImage } from "@/lib/image";
 import { analyzeWithGemini, generateGeminiInfographic } from "@/lib/gemini";
 import { analyzeWithOpenAI, generateOpenAIInfographic } from "@/lib/openai";
 import type { Provider } from "@/lib/types";
+import { verifyAccessCode } from "@/lib/access";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
+    const accessError = verifyAccessCode(request);
+    if (accessError) return accessError;
+
     const body = await request.json();
     const provider = (body.provider || "openai") as Provider;
     const imageDataUrl = String(body.imageDataUrl || "");
