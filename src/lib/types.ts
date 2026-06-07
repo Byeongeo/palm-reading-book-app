@@ -24,11 +24,14 @@ export type BookItem = {
   title: string;
   author: string;
   publisher: string;
+  pubDate: string;
   priceSales: number | null;
   isbn13: string;
+  isbn: string;
   cover: string;
   link: string;
   description: string;
+  categoryName: string;
   customerReviewRank: number | null;
   why: string;
 };
