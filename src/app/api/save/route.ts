@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { verifyAccessCode } from "@/lib/access";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const accessError = verifyAccessCode(request);
+    if (accessError) return accessError;
+
     const body = await request.json();
     const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL;
     if (!webhookUrl) {
