@@ -4,6 +4,8 @@ import type { BookGroup, BookItem, PalmAnalysis, PalmLine } from "@/lib/types";
 
 export const runtime = "nodejs";
 
+const RECENT_YEAR_CUTOFF = new Date().getFullYear() - 7;
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -155,6 +157,15 @@ function makeTheme(category: string, keywords: string[]) {
 }
 
 async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
+  const salesPointBooks = await requestAladinSearch(query, "SalesPoint");
+  const recentSalesPointBooks = salesPointBooks.filter(isRecentBook);
+  if (recentSalesPointBooks.length >= 3) return recentSalesPointBooks;
+
+  const newestBooks = await requestAladinSearch(query, "PublishTime").catch(() => []);
+  return mergeBooks(recentSalesPointBooks, newestBooks, salesPointBooks);
+}
+
+async function requestAladinSearch(query: string, sort: "SalesPoint" | "PublishTime"): Promise<Omit<BookItem, "why">[]> {
   const url = new URL("https://www.aladin.co.kr/ttb/api/ItemSearch.aspx");
   url.searchParams.set("ttbkey", process.env.ALADIN_TTB_KEY || "");
   url.searchParams.set("Query", query);
@@ -162,7 +173,7 @@ async function searchAladin(query: string): Promise<Omit<BookItem, "why">[]> {
   url.searchParams.set("MaxResults", "10");
   url.searchParams.set("start", "1");
   url.searchParams.set("SearchTarget", "Book");
-  url.searchParams.set("Sort", "SalesPoint");
+  url.searchParams.set("Sort", sort);
   url.searchParams.set("Cover", "Big");
   url.searchParams.set("output", "js");
   url.searchParams.set("Version", "20131101");
@@ -194,6 +205,27 @@ function isTeenOrAdultBook(item: any) {
   const text = `${item.title || ""} ${item.categoryName || ""}`.toLowerCase();
   const blockedWords = ["어린이", "유아", "아동", "초등", "초등학생", "그림책", "유치원"];
   return !blockedWords.some((word) => text.includes(word));
+}
+
+function isRecentBook(book: Pick<BookItem, "pubDate">) {
+  const year = Number(String(book.pubDate || "").slice(0, 4));
+  return Number.isFinite(year) && year >= RECENT_YEAR_CUTOFF;
+}
+
+function mergeBooks(...groups: Omit<BookItem, "why">[][]) {
+  const seen = new Set<string>();
+  const merged: Omit<BookItem, "why">[] = [];
+
+  for (const group of groups) {
+    for (const book of group) {
+      const key = book.isbn13 || book.isbn || book.title;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(book);
+    }
+  }
+
+  return merged;
 }
 
 async function fillGroupBooks(groupBooks: BookItem[], group: InternalBookGroup, seen: Set<string>) {
