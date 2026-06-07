@@ -172,11 +172,11 @@ export default function Home() {
         <div className="brand">
           <div className="brand-mark">手</div>
           <div>
-            <h1 className="brand-title">손금 독서 추천 템플릿</h1>
-            <p className="brand-subtitle">Vercel + OpenAI/Gemini + 알라딘 API 연수용 앱</p>
+            <h1 className="brand-title">손금 도서 추천 앱</h1>
+            <p className="brand-subtitle">Vercel + OpenAI/Gemini + 알라딘 API 사용</p>
           </div>
         </div>
-        <div className="status-pill">{busy || "API 키 입력 전에도 데모 흐름을 확인할 수 있습니다."}</div>
+        {busy ? <div className="status-pill">{busy}</div> : null}
       </header>
 
       {busy ? (
@@ -228,7 +228,7 @@ export default function Home() {
               </label>
             </div>
             <div className="notice">
-              이 앱은 진단이나 예언이 아니라 자기이해와 독서 추천 활동을 위한 수업용 도구입니다. 사진 촬영 전 학생 동의를 받고, 결과 해석은 긍정적 표현으로 안내하세요.
+              이 앱은 진단이나 예언이 아니라 자기이해와 독서 추천 활동을 위한 수업용 도구입니다.
             </div>
           </div>
         </aside>
