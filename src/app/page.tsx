@@ -195,7 +195,7 @@ export default function Home() {
         <div className="step" data-active={student.name ? "true" : "false"}>1. 학생 정보</div>
         <div className="step" data-active={photo ? "true" : "false"}>2. 손바닥 촬영</div>
         <div className="step" data-active={analysisResult ? "true" : "false"}>3. AI 분석</div>
-        <div className="step" data-active={books.length > 0 ? "true" : "false"}>4. 권장도서</div>
+        <div className="step" data-active={books.length > 0 || bookGroups.length > 0 ? "true" : "false"}>4. 권장도서</div>
       </nav>
 
       <section className="main-grid no-print">
@@ -272,6 +272,11 @@ export default function Home() {
             <div className="result-image">
               {analysisResult?.imageDataUrl ? (
                 <img src={analysisResult.imageDataUrl} alt="AI가 만든 손금 전체 가이드 인포그래픽" />
+              ) : busy.includes("손금") ? (
+                <div className="placeholder">
+                  <div className="small-loader" />
+                  손금 가이드 인포그래픽을 생성하고 있습니다. 이미지 생성은 1~2분 정도 걸릴 수 있습니다.
+                </div>
               ) : (
                 <div className="placeholder">분석을 실행하면 업로드한 손바닥 사진을 바탕으로 만든 인포그래픽이 여기에 표시됩니다.</div>
               )}
@@ -348,7 +353,10 @@ export default function Home() {
                             {book.cover ? <img src={book.cover} alt="" /> : <span />}
                             <span>
                               <p className="book-title">{book.title}</p>
-                              <p className="book-meta">{book.author} · {book.publisher} · {book.priceSales ? `${book.priceSales.toLocaleString()}원` : "가격 정보 없음"}</p>
+                              <p className="book-meta">
+                                {book.author} · {book.publisher} · {getYear(book.pubDate)} · {book.priceSales ? `${book.priceSales.toLocaleString()}원` : "가격 정보 없음"}
+                              </p>
+                              <p className="book-meta">{book.isbn13 || book.isbn ? `ISBN ${book.isbn13 || book.isbn}` : "ISBN 정보 없음"}</p>
                             </span>
                           </button>
                           {openBooks[key] ? (
@@ -357,6 +365,7 @@ export default function Home() {
                               <p>{book.why}</p>
                               <strong>책 소개</strong>
                               <p>{book.description || "알라딘 API에서 제공된 소개가 없습니다."}</p>
+                              <p>출판연도: {getYear(book.pubDate)} · ISBN: {book.isbn13 || book.isbn || "정보 없음"}</p>
                               <p>알라딘 평점 지표: {book.customerReviewRank ?? "정보 없음"}</p>
                               <div className="book-links">
                                 <a className="link-button" href={book.link} target="_blank" rel="noreferrer">알라딘</a>
@@ -409,4 +418,9 @@ function loadImage(src: string) {
     image.onerror = reject;
     image.src = src;
   });
+}
+
+function getYear(pubDate: string) {
+  const year = String(pubDate || "").slice(0, 4);
+  return /^\d{4}$/.test(year) ? `${year}년` : "출판연도 정보 없음";
 }
