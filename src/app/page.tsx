@@ -31,6 +31,9 @@ export default function Home() {
   const [busy, setBusy] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const [accessCodeRequired, setAccessCodeRequired] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [accessGranted, setAccessGranted] = useState(false);
 
   const canAnalyze = useMemo(() => {
     return Boolean(student.grade && student.classNo && student.studentNo && student.name && photo && !busy);
@@ -38,6 +41,20 @@ export default function Home() {
 
   useEffect(() => {
     return () => stopCamera();
+  }, []);
+
+  useEffect(() => {
+    const savedCode = window.sessionStorage.getItem("palm-app-access-code") || "";
+    setAccessCode(savedCode);
+
+    fetch("/api/config")
+      .then((response) => response.json())
+      .then((config) => {
+        const required = Boolean(config.accessCodeRequired);
+        setAccessCodeRequired(required);
+        setAccessGranted(!required || Boolean(savedCode));
+      })
+      .catch(() => setAccessGranted(true));
   }, []);
 
   useEffect(() => {
@@ -116,7 +133,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: makeHeaders(accessCode),
         body: JSON.stringify({ provider, student, imageDataUrl: photo })
       });
       const payload = await response.json();
@@ -138,7 +155,7 @@ export default function Home() {
     try {
       const response = await fetch("/api/books", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: makeHeaders(accessCode),
         body: JSON.stringify({ analysis: analysisResult.analysis, provider })
       });
       const payload = await response.json();
@@ -161,9 +178,21 @@ export default function Home() {
   async function saveResult(analysis: PalmAnalysis) {
     await fetch("/api/save", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: makeHeaders(accessCode),
       body: JSON.stringify({ student, provider, analysis })
     }).catch(() => undefined);
+  }
+
+  function unlockApp() {
+    const trimmedCode = accessCode.trim();
+    if (!trimmedCode) {
+      setError("접속 코드를 입력하세요.");
+      return;
+    }
+    window.sessionStorage.setItem("palm-app-access-code", trimmedCode);
+    setAccessCode(trimmedCode);
+    setAccessGranted(true);
+    setError("");
   }
 
   return (
@@ -191,14 +220,35 @@ export default function Home() {
         </section>
       ) : null}
 
-      <nav className="workflow" aria-label="진행 단계">
+      {accessCodeRequired && !accessGranted ? (
+        <section className="access-panel">
+          <div>
+            <h2>접속 코드 입력</h2>
+            <p>API 과금을 막기 위해 교사가 안내한 접속 코드를 입력한 뒤 사용할 수 있습니다.</p>
+          </div>
+          <div className="access-form">
+            <input
+              value={accessCode}
+              onChange={(event) => setAccessCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") unlockApp();
+              }}
+              placeholder="접속 코드"
+              type="password"
+            />
+            <button className="button" onClick={unlockApp}>입장</button>
+          </div>
+        </section>
+      ) : null}
+
+      <nav className="workflow" aria-label="진행 단계" hidden={accessCodeRequired && !accessGranted}>
         <div className="step" data-active={student.name ? "true" : "false"}>1. 학생 정보</div>
         <div className="step" data-active={photo ? "true" : "false"}>2. 손바닥 촬영</div>
         <div className="step" data-active={analysisResult ? "true" : "false"}>3. AI 분석</div>
         <div className="step" data-active={books.length > 0 || bookGroups.length > 0 ? "true" : "false"}>4. 권장도서</div>
       </nav>
 
-      <section className="main-grid no-print">
+      <section className="main-grid no-print" hidden={accessCodeRequired && !accessGranted}>
         <aside className="panel">
           <div className="panel-inner">
             <h2 className="section-title">학생 정보와 AI 선택</h2>
@@ -265,7 +315,7 @@ export default function Home() {
 
       {error ? <div className="error no-print">{error}</div> : null}
 
-      <section className="output-grid">
+      <section className="output-grid" hidden={accessCodeRequired && !accessGranted}>
         <section className="panel">
           <div className="panel-inner">
             <h2 className="section-title">손금 전체 가이드</h2>
@@ -318,7 +368,7 @@ export default function Home() {
         </aside>
       </section>
 
-      <section className="panel no-print" style={{ marginTop: 18 }}>
+      <section className="panel no-print" style={{ marginTop: 18 }} hidden={accessCodeRequired && !accessGranted}>
         <div className="panel-inner">
           <h2 className="section-title">권장도서</h2>
           {busy.includes("권장도서") ? (
@@ -423,4 +473,11 @@ function loadImage(src: string) {
 function getYear(pubDate: string) {
   const year = String(pubDate || "").slice(0, 4);
   return /^\d{4}$/.test(year) ? `${year}년` : "출판연도 정보 없음";
+}
+
+function makeHeaders(accessCode: string) {
+  return {
+    "Content-Type": "application/json",
+    "x-app-access-code": accessCode
+  };
 }

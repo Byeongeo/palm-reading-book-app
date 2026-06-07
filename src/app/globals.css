@@ -139,6 +139,44 @@ button:disabled {
   transition: width 0.45s ease;
 }
 
+.access-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  border: 1px solid rgba(190, 52, 85, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.9);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.access-panel h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.access-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.access-form {
+  display: flex;
+  gap: 8px;
+}
+
+.access-form input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 11px;
+}
+
 .workflow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -598,6 +636,10 @@ button:disabled {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .access-panel {
+    grid-template-columns: 1fr;
   }
 
   .camera-frame video,
