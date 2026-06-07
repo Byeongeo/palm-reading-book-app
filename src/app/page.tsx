@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { BookItem, PalmAnalysis, Provider, StudentInfo } from "@/lib/types";
+import type { BookGroup, BookItem, PalmAnalysis, Provider, StudentInfo } from "@/lib/types";
 
 type AnalyzeResponse = {
   analysis: PalmAnalysis;
@@ -26,8 +26,10 @@ export default function Home() {
   const [cameraOn, setCameraOn] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<AnalyzeResponse | null>(null);
   const [books, setBooks] = useState<BookItem[]>([]);
+  const [bookGroups, setBookGroups] = useState<BookGroup[]>([]);
   const [openBooks, setOpenBooks] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string>("");
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
 
   const canAnalyze = useMemo(() => {
@@ -44,6 +46,25 @@ export default function Home() {
       videoRef.current.play().catch(() => undefined);
     }
   }, [cameraOn, photo]);
+
+  useEffect(() => {
+    if (!busy) {
+      setProgress(0);
+      return;
+    }
+
+    setProgress(8);
+    const timer = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= 92) return current;
+        if (current < 45) return current + 7;
+        if (current < 75) return current + 4;
+        return current + 2;
+      });
+    }, 900);
+
+    return () => window.clearInterval(timer);
+  }, [busy]);
 
   async function startCamera() {
     setError("");
@@ -75,6 +96,7 @@ export default function Home() {
     setPhoto(dataUrl);
     setAnalysisResult(null);
     setBooks([]);
+    setBookGroups([]);
   }
 
   async function handleFile(file: File | undefined) {
@@ -84,6 +106,7 @@ export default function Home() {
     setPhoto(dataUrl);
     setAnalysisResult(null);
     setBooks([]);
+    setBookGroups([]);
   }
 
   async function analyzePalm() {
@@ -98,6 +121,7 @@ export default function Home() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "분석에 실패했습니다.");
+      setProgress(100);
       setAnalysisResult(payload);
       await saveResult(payload.analysis);
     } catch (err) {
@@ -119,7 +143,14 @@ export default function Home() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "도서 추천에 실패했습니다.");
-      setBooks(payload.books);
+      const nextBooks = Array.isArray(payload.books) ? payload.books : [];
+      const nextGroups = Array.isArray(payload.groups) ? payload.groups : [];
+      if (nextBooks.length === 0 && nextGroups.length === 0) {
+        throw new Error("알라딘 검색 결과가 비어 있습니다. ALADIN_TTB_KEY와 검색어를 확인하세요.");
+      }
+      setProgress(100);
+      setBooks(nextBooks);
+      setBookGroups(nextGroups);
     } catch (err) {
       setError(err instanceof Error ? err.message : "도서 추천 중 문제가 생겼습니다.");
     } finally {
@@ -147,6 +178,18 @@ export default function Home() {
         </div>
         <div className="status-pill">{busy || "API 키 입력 전에도 데모 흐름을 확인할 수 있습니다."}</div>
       </header>
+
+      {busy ? (
+        <section className="progress-panel no-print" aria-live="polite">
+          <div className="progress-copy">
+            <strong>{busy}</strong>
+            <span>{progress < 100 ? "잠시만 기다려 주세요. 이미지 생성은 1~2분 정도 걸릴 수 있습니다." : "완료되었습니다."}</span>
+          </div>
+          <div className="progress-track" aria-label="작업 진행률">
+            <div className="progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+        </section>
+      ) : null}
 
       <nav className="workflow" aria-label="진행 단계">
         <div className="step" data-active={student.name ? "true" : "false"}>1. 학생 정보</div>
@@ -273,38 +316,60 @@ export default function Home() {
       <section className="panel no-print" style={{ marginTop: 18 }}>
         <div className="panel-inner">
           <h2 className="section-title">권장도서</h2>
-          {books.length === 0 ? (
-            <div className="placeholder">권장도서 버튼을 누르면 알라딘 API 검색 결과를 바탕으로 청소년 이상에게 맞는 책을 추천합니다.</div>
+          {busy.includes("권장도서") ? (
+            <div className="placeholder">
+              <div className="small-loader" />
+              알라딘 API에서 관련 도서를 찾고 있습니다. 검색어를 여러 개 확인하므로 잠시 걸릴 수 있습니다.
+            </div>
+          ) : bookGroups.length === 0 && books.length === 0 ? (
+            <div className="placeholder">권장도서 버튼을 누르면 감정선, 지능선, 생명선, 운명선의 핵심어를 바탕으로 영역별 베스트셀러를 추천합니다.</div>
           ) : (
-            <div className="books">
-              {books.map((book) => {
-                const key = book.isbn13 || book.title;
-                const yes24Url = `https://www.yes24.com/Product/Search?domain=ALL&query=${encodeURIComponent(book.isbn13 || book.title)}`;
-                return (
-                  <article className="book-card" key={key}>
-                    <button className="book-summary" onClick={() => setOpenBooks({ ...openBooks, [key]: !openBooks[key] })}>
-                      {book.cover ? <img src={book.cover} alt="" /> : <span />}
-                      <span>
-                        <p className="book-title">{book.title}</p>
-                        <p className="book-meta">{book.author} · {book.publisher} · {book.priceSales ? `${book.priceSales.toLocaleString()}원` : "가격 정보 없음"}</p>
-                      </span>
-                    </button>
-                    {openBooks[key] ? (
-                      <div className="book-detail">
-                        <strong>추천 이유</strong>
-                        <p>{book.why}</p>
-                        <strong>책 소개</strong>
-                        <p>{book.description || "알라딘 API에서 제공된 소개가 없습니다."}</p>
-                        <p>알라딘 평점 지표: {book.customerReviewRank ?? "정보 없음"}</p>
-                        <div className="book-links">
-                          <a className="link-button" href={book.link} target="_blank" rel="noreferrer">알라딘</a>
-                          <a className="link-button light" href={yes24Url} target="_blank" rel="noreferrer">YES24</a>
-                        </div>
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
+            <div className="book-groups">
+              {(bookGroups.length > 0 ? bookGroups : [{ category: "종합 추천", keywords: [], theme: "손금 해석과 연결되는 성장 독서", books }]).map((group) => (
+                <section className="book-group" key={group.category}>
+                  <div className="book-group-head">
+                    <div>
+                      <h3>{group.category} 추천</h3>
+                      <p>{group.theme}</p>
+                    </div>
+                    <div className="tags">
+                      {group.keywords.map((keyword) => (
+                        <span className="tag" key={`${group.category}-${keyword}`}>{keyword}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="books">
+                    {group.books.map((book) => {
+                      const key = `${group.category}-${book.isbn13 || book.title}`;
+                      const yes24Url = `https://www.yes24.com/Product/Search?domain=ALL&query=${encodeURIComponent(book.isbn13 || book.title)}`;
+                      return (
+                        <article className="book-card" key={key}>
+                          <button className="book-summary" onClick={() => setOpenBooks({ ...openBooks, [key]: !openBooks[key] })}>
+                            {book.cover ? <img src={book.cover} alt="" /> : <span />}
+                            <span>
+                              <p className="book-title">{book.title}</p>
+                              <p className="book-meta">{book.author} · {book.publisher} · {book.priceSales ? `${book.priceSales.toLocaleString()}원` : "가격 정보 없음"}</p>
+                            </span>
+                          </button>
+                          {openBooks[key] ? (
+                            <div className="book-detail">
+                              <strong>추천 이유</strong>
+                              <p>{book.why}</p>
+                              <strong>책 소개</strong>
+                              <p>{book.description || "알라딘 API에서 제공된 소개가 없습니다."}</p>
+                              <p>알라딘 평점 지표: {book.customerReviewRank ?? "정보 없음"}</p>
+                              <div className="book-links">
+                                <a className="link-button" href={book.link} target="_blank" rel="noreferrer">알라딘</a>
+                                <a className="link-button light" href={yes24Url} target="_blank" rel="noreferrer">YES24</a>
+                              </div>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
             </div>
           )}
         </div>
